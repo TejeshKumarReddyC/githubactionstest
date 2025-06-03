@@ -1,4 +1,4 @@
-name: Deploy Lambda with Runtime
+name: Create or Update Lambda Function
 
 on:
   push:
@@ -13,7 +13,13 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v3
 
-    - name: Create deployment package
+    - name: Read runtime from file
+      id: runtime
+      run: |
+        RUNTIME=$(cat runtime.txt)
+        echo "runtime=$RUNTIME" >> $GITHUB_OUTPUT
+
+    - name: Zip Lambda function
       run: zip -r function.zip lambda_function.py
 
     - name: Configure AWS credentials
@@ -23,20 +29,24 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
+    - name: Create or update Lambda function
+      run: |
+        aws lambda get-function --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} || \
+        aws lambda create-function \
+          --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
+          --runtime ${{ steps.runtime.outputs.runtime }} \
+          --role ${{ secrets.LAMBDA_EXECUTION_ROLE_ARN }} \
+          --handler lambda_function.lambda_handler \
+          --zip-file fileb://function.zip
+
     - name: Update Lambda code
       run: |
         aws lambda update-function-code \
           --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
           --zip-file fileb://function.zip
-    - name: Read runtime from the file
-      id: runtime
-      run: |
-         RUNTIME=$(cat runtime.txt)
-         echo "runtime=$RUNTIME" >> $GITHUB_OUTPUT
-         
-    - name: Update Lambda runtime
+
+    - name: Update Lambda runtime from file
       run: |
         aws lambda update-function-configuration \
           --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
           --runtime ${{ steps.runtime.outputs.runtime }}
-    
